@@ -100,7 +100,10 @@ def generate_scorecam(model, input_tensor, target_layer):
         scorecam += weights[i] * act[i]
     scorecam = scorecam.cpu().numpy()
     scorecam = np.maximum(scorecam, 0)
-    return normalize_map(scorecam)
+    import torch.nn.functional as F
+    st = torch.tensor(scorecam).unsqueeze(0).unsqueeze(0).float()
+    su = F.interpolate(st, size=(224,224), mode="bilinear", align_corners=False)
+    return normalize_map(su.squeeze().numpy())
 
 def generate_xai_maps(model_name, img_name):
     model, target_layer = load_model(model_name)
