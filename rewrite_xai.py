@@ -1,4 +1,4 @@
-import os
+content = '''import os
 import torch
 import numpy as np
 from torchvision import models
@@ -9,10 +9,10 @@ from torchvision import transforms
 import warnings
 warnings.filterwarnings("ignore")
 
-DATA_DIR   = r"C:\Users\Acer\cti_project\data"
-IMAGE_DIR  = r"F:\cti_images\images"
-MODELS_DIR = r"C:\Users\Acer\cti_project\models"
-XAI_DIR    = r"C:\Users\Acer\cti_project\xai_maps"
+DATA_DIR   = r"C:\\Users\\Acer\\cti_project\\data"
+IMAGE_DIR  = r"F:\\cti_images\\images"
+MODELS_DIR = r"C:\\Users\\Acer\\cti_project\\models"
+XAI_DIR    = r"C:\\Users\\Acer\\cti_project\\xai_maps"
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", DEVICE)
 
@@ -151,7 +151,7 @@ def save_maps(maps, model_name, img_name):
 
 if __name__ == "__main__":
     import pandas as pd
-    test_df = pd.read_csv(r"C:\Users\Acer\cti_project\data\test.csv")
+    test_df = pd.read_csv(r"C:\\Users\\Acer\\cti_project\\data\\test.csv")
     cardio_imgs = test_df[test_df["label"]==1]["Image Index"].values[:3]
     for model_name in ["densenet121"]:
         print(f"Generating XAI maps for {model_name}")
@@ -161,3 +161,8 @@ if __name__ == "__main__":
             save_maps(maps, model_name, img_name)
             print(f"  Saved {len(maps)} maps")
     print("Done.")
+'''
+
+with open('generate_xai.py', 'w') as f:
+    f.write(content)
+print("generate_xai.py rewritten successfully.")

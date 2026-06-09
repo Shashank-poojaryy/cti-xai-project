@@ -14,7 +14,7 @@ warnings.filterwarnings('ignore')
 
 # ─── CONFIG ───────────────────────────────────────────────
 DATA_DIR   = r'C:\Users\Acer\cti_project\data'
-IMAGE_DIR  = r'C:\Users\Acer\cti_project\data\images'
+IMAGE_DIR  = r'F:\cti_images\images'
 MODELS_DIR = r'C:\Users\Acer\cti_project\models'
 XAI_DIR    = r'C:\Users\Acer\cti_project\xai_maps'
 RESULTS_DIR= r'C:\Users\Acer\cti_project\results'

@@ -10,10 +10,10 @@ from dataloader import get_dataloaders
 
 # ─── CONFIG ───────────────────────────────────────────────
 DATA_DIR   = r'C:\Users\Acer\cti_project\data'
-IMAGE_DIR  = r'C:\Users\Acer\cti_project\data\images'   # images go here later
+IMAGE_DIR = r'F:\cti_images\images'
 MODELS_DIR = r'C:\Users\Acer\cti_project\models'
 BATCH_SIZE = 32
-EPOCHS     = 50
+EPOCHS     = 3
 LR         = 1e-4
 DEVICE     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print("Using device:", DEVICE)
