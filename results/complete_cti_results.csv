@@ -1,0 +1,5 @@
+method,localization,stability,cross_xai,cross_arch,sanity,CTI
+gradcam,0.6722,0.9578,0.5515,0.2007,0.8375,0.5745
+gradcampp,0.6723,0.9561,0.5515,0.2515,0.6832,0.5612
+layercam,0.4757,0.806,0.5515,0.0294,0.6995,0.4499
+integrated_gradients,0.4832,0.6358,0.5515,0.4432,0.9403,0.5362

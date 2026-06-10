@@ -15,7 +15,7 @@ print(f"Generating XAI maps for {len(matches)} bbox images...")
 for _, row in matches.iterrows():
     img_name = row['Image Index']
     print(f"  Processing {img_name}")
-    for model_name in ['densenet121']:
+    for model_name in ['densenet121', 'resnet50', 'efficientnet_b4']:
         maps = generate_xai_maps(model_name, img_name)
         save_maps(maps, model_name, img_name)
         print(f"    Saved {len(maps)} maps")

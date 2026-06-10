@@ -127,6 +127,15 @@ with col2:
                     c3.metric("Cross-XAI", f"{scores['cross_xai']:.3f}")
                     c4.metric("Sanity", f"{scores['sanity']:.3f}")
                     c5.metric("CTI Score", f"{scores['CTI']:.3f}", delta="Best" if xai_method == 'gradcam' else None)
+                    st.markdown("---")
+                    st.subheader(f"🏆 Trustworthiness Rating")
+                    cti_val = scores['CTI']
+                    if cti_val >= 0.70:
+                        st.success(f"✅ HIGH TRUSTWORTHINESS — CTI: {cti_val:.3f} — This XAI method is clinically reliable for Cardiomegaly detection.")
+                    elif cti_val >= 0.60:
+                        st.warning(f"⚠️ MODERATE TRUSTWORTHINESS — CTI: {cti_val:.3f} — Use with caution in clinical settings.")
+                    else:
+                        st.error(f"❌ LOW TRUSTWORTHINESS — CTI: {cti_val:.3f} — This method is not recommended for clinical use.")
 
             except Exception as e:
                 st.error(f"Error: {str(e)}")
