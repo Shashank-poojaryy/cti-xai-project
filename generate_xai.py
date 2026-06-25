@@ -9,10 +9,10 @@ from torchvision import transforms
 import warnings
 warnings.filterwarnings("ignore")
 
-DATA_DIR   = r"C:\Users\Acer\cti_project\data"
-IMAGE_DIR  = r"F:\cti_images\images"
-MODELS_DIR = r"C:\Users\Acer\cti_project\models"
-XAI_DIR    = r"C:\Users\Acer\cti_project\xai_maps"
+DATA_DIR   = r"C:\Users\NMAMIT\cti_project\data"
+IMAGE_DIR  = r"C:\Users\NMAMIT\cti_project\images"
+MODELS_DIR = r"C:\Users\NMAMIT\cti_project\models"
+XAI_DIR    = r"C:\Users\NMAMIT\cti_project\xai_maps"
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", DEVICE)
 
@@ -95,6 +95,11 @@ def generate_scorecam(model, input_tensor, target_layer):
             scores.append(score)
     scores = torch.tensor(scores).to(DEVICE)
     weights = scores / (scores.sum() + 1e-8)
+    # ReLU activations before combining: target layers (e.g. DenseNet
+    # denseblock4) are not post-ReLU, so raw mixed-sign activations make the
+    # weighted sum non-positive everywhere -> an all-zero map. Canonical
+    # Score-CAM assumes non-negative activation maps.
+    act = torch.relu(act)
     scorecam = torch.zeros(act.shape[1], act.shape[2]).to(DEVICE)
     for i in range(act.shape[0]):
         scorecam += weights[i] * act[i]
@@ -154,7 +159,7 @@ def save_maps(maps, model_name, img_name):
 
 if __name__ == "__main__":
     import pandas as pd
-    test_df = pd.read_csv(r"C:\Users\Acer\cti_project\data\test.csv")
+    test_df = pd.read_csv(r"C:\Users\NMAMIT\cti_project\data\test.csv")
     cardio_imgs = test_df[test_df["label"]==1]["Image Index"].values[:3]
     for model_name in ["densenet121"]:
         print(f"Generating XAI maps for {model_name}")

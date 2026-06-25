@@ -2,8 +2,8 @@ import os
 import pandas as pd
 from generate_xai import generate_xai_maps, save_maps
 
-DATA_DIR  = r'C:\Users\Acer\cti_project\data'
-IMAGE_DIR = r'F:\cti_images\images'
+DATA_DIR  = r'C:\Users\NMAMIT\cti_project\data'
+IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
 
 bbox_df = pd.read_csv(os.path.join(DATA_DIR, 'BBox_List_2017.csv'))
 bbox_cardio = bbox_df[bbox_df['Finding Label'] == 'Cardiomegaly']

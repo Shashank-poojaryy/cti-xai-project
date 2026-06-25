@@ -4,9 +4,9 @@ import pandas as pd
 from scipy.stats import spearmanr
 from scipy.spatial.distance import jensenshannon
 
-DATA_DIR = r'C:\Users\Acer\cti_project\data'
-XAI_DIR  = r'C:\Users\Acer\cti_project\xai_maps'
-IMAGE_DIR = r'F:\cti_images\images'
+DATA_DIR = r'C:\Users\NMAMIT\cti_project\data'
+XAI_DIR  = r'C:\Users\NMAMIT\cti_project\xai_maps'
+IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
 
 XAI_METHODS = ['gradcam', 'gradcampp', 'scorecam', 'layercam', 'integrated_gradients']
 
@@ -87,5 +87,5 @@ for _, row in matches.iterrows():
 df = pd.DataFrame(results)
 print("\nCTI Results per method (Localization + Cross-XAI):")
 print(df.groupby('method')[['localization','cross_xai','partial_cti']].mean().round(4))
-df.to_csv(r'C:\Users\Acer\cti_project\results\cti_test_results.csv', index=False)
+df.to_csv(r'C:\Users\NMAMIT\cti_project\results\cti_test_results.csv', index=False)
 print("\nSaved to results/cti_test_results.csv")

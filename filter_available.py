@@ -2,8 +2,8 @@ import os
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-IMAGE_DIR = r'F:\cti_images\images'
-DATA_DIR  = r'C:\Users\Acer\cti_project\data'
+IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
+DATA_DIR  = r'C:\Users\NMAMIT\cti_project\data'
 
 # Get all available images
 available = set(os.listdir(IMAGE_DIR))

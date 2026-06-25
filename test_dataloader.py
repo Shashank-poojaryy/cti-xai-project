@@ -2,8 +2,8 @@ from dataloader import get_dataloaders
 
 if __name__ == '__main__':
     train_loader, val_loader, test_loader = get_dataloaders(
-        r'C:\Users\Acer\cti_project\data',
-        r'F:\cti_images\images',
+        r'C:\Users\NMAMIT\cti_project\data',
+        r'C:\Users\NMAMIT\cti_project\images',
         batch_size=32
     )
 

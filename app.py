@@ -12,7 +12,7 @@ import tempfile
 import os
 import shutil
 
-MODELS_DIR = r'C:\Users\Acer\cti_project\models'
+MODELS_DIR = r'C:\Users\NMAMIT\cti_project\models'
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 transform = transforms.Compose([
@@ -101,7 +101,7 @@ with col2:
                 prediction = "Cardiomegaly" if prob >= 0.5 else "Normal"
                 confidence = prob if prob >= 0.5 else 1 - prob
 
-                original_dir = r'F:\cti_images\images'
+                original_dir = r'C:\Users\NMAMIT\cti_project\images'
                 dest_path = os.path.join(original_dir, uploaded_file.name)
                 shutil.copy(temp_path, dest_path)
 

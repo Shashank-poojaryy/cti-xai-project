@@ -10,7 +10,7 @@ from generate_xai import generate_xai_maps, load_model
 import warnings
 warnings.filterwarnings('ignore')
 
-IMAGE_DIR  = r'F:\cti_images\images'
+IMAGE_DIR  = r'C:\Users\NMAMIT\cti_project\images'
 DEVICE     = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 transform = transforms.Compose([
@@ -98,8 +98,8 @@ def compute_stability(model_name, method, img_name):
 if __name__ == '__main__':
     import pandas as pd
 
-    DATA_DIR = r'C:\Users\Acer\cti_project\data'
-    XAI_DIR  = r'C:\Users\Acer\cti_project\xai_maps'
+    DATA_DIR = r'C:\Users\NMAMIT\cti_project\data'
+    XAI_DIR  = r'C:\Users\NMAMIT\cti_project\xai_maps'
 
     bbox_df = pd.read_csv(os.path.join(DATA_DIR, 'BBox_List_2017.csv'))
     bbox_cardio = bbox_df[bbox_df['Finding Label'] == 'Cardiomegaly']

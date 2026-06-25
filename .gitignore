@@ -1,4 +1,4 @@
-data/images/ 
-models/*.pth 
-xai_maps/ 
-__pycache__/ 
+images/
+models/*.pth
+xai_maps/
+__pycache__/

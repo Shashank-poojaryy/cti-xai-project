@@ -10,7 +10,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 DATA_DIR   = r"C:\\Users\\Acer\\cti_project\\data"
-IMAGE_DIR  = r"F:\\cti_images\\images"
+IMAGE_DIR  = r"C:\\Users\\NMAMIT\\cti_project\\images"
 MODELS_DIR = r"C:\\Users\\Acer\\cti_project\\models"
 XAI_DIR    = r"C:\\Users\\Acer\\cti_project\\xai_maps"
 DEVICE     = torch.device("cuda" if torch.cuda.is_available() else "cpu")

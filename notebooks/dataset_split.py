@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 
-data = pd.read_csv(r'C:\Users\Acer\cti_project\data\Data_Entry_2017.csv')
+data = pd.read_csv(r'C:\Users\NMAMIT\cti_project\data\Data_Entry_2017.csv')
 
 # Filter Cardiomegaly (all) and Normal
 cardio = data[data['Finding Labels'].str.contains('Cardiomegaly')].copy()
@@ -26,8 +26,8 @@ print("Val size:", len(val), "| Cardiomegaly:", len(val[val['label']==1]))
 print("Test size:", len(test), "| Cardiomegaly:", len(test[test['label']==1]))
 
 # Save splits
-train.to_csv(r'C:\Users\Acer\cti_project\data\train.csv', index=False)
-val.to_csv(r'C:\Users\Acer\cti_project\data\val.csv', index=False)
-test.to_csv(r'C:\Users\Acer\cti_project\data\test.csv', index=False)
+train.to_csv(r'C:\Users\NMAMIT\cti_project\data\train.csv', index=False)
+val.to_csv(r'C:\Users\NMAMIT\cti_project\data\val.csv', index=False)
+test.to_csv(r'C:\Users\NMAMIT\cti_project\data\test.csv', index=False)
 
 print("\nSplit CSVs saved to data folder.")

@@ -8,10 +8,10 @@ from compute_sanity import compute_sanity
 import warnings
 warnings.filterwarnings('ignore')
 
-DATA_DIR  = r'C:\Users\Acer\cti_project\data'
-IMAGE_DIR = r'F:\cti_images\images'
-XAI_DIR   = r'C:\Users\Acer\cti_project\xai_maps'
-RESULTS_DIR = r'C:\Users\Acer\cti_project\results'
+DATA_DIR  = r'C:\Users\NMAMIT\cti_project\data'
+IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
+XAI_DIR   = r'C:\Users\NMAMIT\cti_project\xai_maps'
+RESULTS_DIR = r'C:\Users\NMAMIT\cti_project\results'
 
 XAI_METHODS = ['gradcam', 'gradcampp', 'layercam', 'integrated_gradients']
 

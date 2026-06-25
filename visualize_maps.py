@@ -4,9 +4,9 @@ import matplotlib.pyplot as plt
 from PIL import Image
 from torchvision import transforms
 
-IMAGE_DIR = r'F:\cti_images\images'
-XAI_DIR   = r'C:\Users\Acer\cti_project\xai_maps'
-RESULTS_DIR = r'C:\Users\Acer\cti_project\results'
+IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
+XAI_DIR   = r'C:\Users\NMAMIT\cti_project\xai_maps'
+RESULTS_DIR = r'C:\Users\NMAMIT\cti_project\results'
 
 def visualize(img_name, model_name='densenet121'):
     img_id = img_name.replace('.png', '')

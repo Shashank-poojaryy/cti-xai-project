@@ -4,7 +4,7 @@ from scipy.stats import spearmanr
 import warnings
 warnings.filterwarnings('ignore')
 
-XAI_DIR    = r'C:\Users\Acer\cti_project\xai_maps'
+XAI_DIR    = r'C:\Users\NMAMIT\cti_project\xai_maps'
 MODEL_NAMES = ['densenet121', 'resnet50', 'efficientnet_b4']
 
 def compute_cross_arch(method, img_id):
@@ -34,8 +34,8 @@ if __name__ == '__main__':
     import pandas as pd
     import os
 
-    DATA_DIR  = r'C:\Users\Acer\cti_project\data'
-    IMAGE_DIR = r'F:\cti_images\images'
+    DATA_DIR  = r'C:\Users\NMAMIT\cti_project\data'
+    IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
 
     bbox_df = pd.read_csv(os.path.join(DATA_DIR, 'BBox_List_2017.csv'))
     bbox_cardio = bbox_df[bbox_df['Finding Label'] == 'Cardiomegaly']

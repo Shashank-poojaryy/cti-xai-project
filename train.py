@@ -9,9 +9,9 @@ import numpy as np
 from dataloader import get_dataloaders
 
 # ─── CONFIG ───────────────────────────────────────────────
-DATA_DIR   = r'C:\Users\Acer\cti_project\data'
-IMAGE_DIR = r'F:\cti_images\images'
-MODELS_DIR = r'C:\Users\Acer\cti_project\models'
+DATA_DIR   = r'C:\Users\NMAMIT\cti_project\data'
+IMAGE_DIR = r'C:\Users\NMAMIT\cti_project\images'
+MODELS_DIR = r'C:\Users\NMAMIT\cti_project\models'
 BATCH_SIZE = 32
 EPOCHS     = 3
 LR         = 1e-4

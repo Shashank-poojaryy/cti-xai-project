@@ -12,10 +12,10 @@ import warnings
 warnings.filterwarnings('ignore')
 
 # ─── CONFIG ───────────────────────────────────────────────
-DATA_DIR    = r'C:\Users\Acer\cti_project\data'
-IMAGE_DIR   = r'F:\cti_images\images'
-RESULTS_DIR = r'C:\Users\Acer\cti_project\results'
-XAI_DIR     = r'C:\Users\Acer\cti_project\xai_maps'
+DATA_DIR    = r'C:\Users\NMAMIT\cti_project\data'
+IMAGE_DIR   = r'C:\Users\NMAMIT\cti_project\images'
+RESULTS_DIR = r'C:\Users\NMAMIT\cti_project\results'
+XAI_DIR     = r'C:\Users\NMAMIT\cti_project\xai_maps'
 
 MODEL_NAMES = ['densenet121', 'resnet50', 'efficientnet_b4']
 XAI_METHODS = ['gradcam', 'gradcampp', 'scorecam', 'layercam', 'integrated_gradients']

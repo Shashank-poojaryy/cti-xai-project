@@ -1,5 +1,5 @@
 import pandas as pd 
-test_df = pd.read_csv(r'C:\Users\Acer\cti_project\data\test.csv') 
+test_df = pd.read_csv(r'C:\Users\NMAMIT\cti_project\data\test.csv') 
 cardio_imgs = test_df[test_df['label']==1]['Image Index'].values[:3] 
 from generate_xai import generate_xai_maps, save_maps 
 for model_name in ['densenet121']: 

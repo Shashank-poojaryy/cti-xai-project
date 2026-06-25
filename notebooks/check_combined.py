@@ -1,6 +1,6 @@
 import pandas as pd
 
-data = pd.read_csv(r'C:\Users\Acer\cti_project\data\Data_Entry_2017.csv')
+data = pd.read_csv(r'C:\Users\NMAMIT\cti_project\data\Data_Entry_2017.csv')
 
 # Find ALL rows that contain Cardiomegaly (including combined labels)
 cardio_all = data[data['Finding Labels'].str.contains('Cardiomegaly')]
