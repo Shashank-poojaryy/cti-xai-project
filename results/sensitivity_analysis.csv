@@ -1,0 +1,16 @@
+config,method,cti,rank
+equal,gradcam,0.6272,2
+equal,gradcampp,0.6622,1
+equal,integrated_gradients,0.5575,5
+equal,layercam,0.6202,3
+equal,scorecam,0.5715,4
+loc_heavy,gradcam,0.6145,2
+loc_heavy,gradcampp,0.6471,1
+loc_heavy,integrated_gradients,0.5348,5
+loc_heavy,layercam,0.5978,3
+loc_heavy,scorecam,0.5564,4
+stab_heavy,gradcam,0.6362,2
+stab_heavy,gradcampp,0.6742,1
+stab_heavy,integrated_gradients,0.5639,5
+stab_heavy,layercam,0.6298,3
+stab_heavy,scorecam,0.5791,4

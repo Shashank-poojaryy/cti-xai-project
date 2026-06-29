@@ -1,0 +1,13 @@
+test,comparison,statistic,p_value,df,significant
+Friedman,all 5 methods,420.7836,8.976e-90,4,True
+Wilcoxon,gradcam vs gradcampp,187.5,4.703e-24,,True
+Wilcoxon,gradcam vs scorecam,354.0,1.237e-22,,True
+Wilcoxon,gradcam vs layercam,3876.0,3.615e-03,,True
+Wilcoxon,gradcam vs integrated_gradients,303.0,4.594e-23,,True
+Wilcoxon,gradcampp vs scorecam,1.0,1.066e-25,,True
+Wilcoxon,gradcampp vs layercam,206.0,6.798e-24,,True
+Wilcoxon,gradcampp vs integrated_gradients,13.0,1.366e-25,,True
+Wilcoxon,scorecam vs layercam,642.0,2.761e-20,,True
+Wilcoxon,scorecam vs integrated_gradients,3869.0,3.460e-03,,True
+Wilcoxon,layercam vs integrated_gradients,313.0,5.584e-23,,True
+Cohen_d,gradcampp vs integrated_gradients,2.8835,,,

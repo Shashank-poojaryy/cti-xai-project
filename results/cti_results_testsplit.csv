@@ -1,0 +1,6 @@
+method,mean_cti,rank
+gradcampp,0.6562,1
+layercam,0.6167,2
+gradcam,0.6142,3
+scorecam,0.5629,4
+integrated_gradients,0.5571,5

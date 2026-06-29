@@ -1,0 +1,6 @@
+method,n,spearman_r,p_value,ci_low,ci_high,significant
+gradcam,146,0.1769,0.03265,0.0171,0.3398,True
+gradcampp,146,0.0959,0.24976,-0.0686,0.2625,False
+scorecam,146,0.2389,0.00368,0.0813,0.3897,True
+layercam,146,0.1896,0.02188,0.0291,0.3449,True
+integrated_gradients,146,0.3237,7e-05,0.1811,0.4545,True

@@ -1,0 +1,8 @@
+{
+  "model": "efficientnet_b4",
+  "AUC": 0.8399,
+  "AP": 0.2155,
+  "F1@0.5": 0.188,
+  "bestF1": 0.2665,
+  "bestF1_thr": 0.66
+}

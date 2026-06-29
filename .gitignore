@@ -1,4 +1,8 @@
 images/
 models/*.pth
+models_v2/*.pth
 xai_maps/
 __pycache__/
+data/cache/
+logs/
+.vscode/

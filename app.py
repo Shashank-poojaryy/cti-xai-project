@@ -1,191 +1,329 @@
-import streamlit as st
-import torch
+"""
+Streamlit app - XAI Reliability Assessment (CTI) for Cardiomegaly detection.
+
+Multi-tab UI:
+  - Analyze        : upload OR pick a demo image -> prediction gauge, GT-box
+                     overlay, saliency overlay, live localization metrics,
+                     CTI radar + trustworthiness rating, downloadable heatmap.
+  - Compare Methods: all 5 saliency maps for one image/model, side by side.
+  - Results        : project-level classification + CTI tables and figures.
+  - About          : what CTI measures.
+
+All values are read live from results/ (no hardcoded scores); saliency is made
+with the fast xai_core engine (model cached once per session).
+"""
+import os, io
 import numpy as np
-from PIL import Image
-from torchvision import models, transforms
-import torch.nn as nn
+import pandas as pd
+import torch
+from PIL import Image, ImageDraw
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.cm as cm
-from generate_xai import generate_xai_maps, load_model, normalize_map
-from compute_sanity import compute_sanity
-from compute_stability import compute_stability
-import tempfile
-import os
-import shutil
+import matplotlib.pyplot as plt
+import streamlit as st
+from torchvision import transforms
+from scipy.spatial.distance import jensenshannon
+import xai_core
 
-MODELS_DIR = r'C:\Users\NMAMIT\cti_project\models'
-DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+ROOT = r"C:\Users\NMAMIT\cti_project"
+DATA_DIR, RESULTS, DEMO_DIR = (os.path.join(ROOT, d) for d in ("data", "results", "demo_images"))
+DEVICE = xai_core.DEVICE
 
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406],
-                         [0.229, 0.224, 0.225])
-])
+MODEL_LABEL = {"densenet121": "DenseNet121", "resnet50": "ResNet50", "efficientnet_b4": "EfficientNet-B4"}
+METHOD_LABEL = {"gradcam": "Grad-CAM", "gradcampp": "Grad-CAM++", "scorecam": "Score-CAM",
+                "layercam": "Layer-CAM", "integrated_gradients": "Integrated Gradients"}
+COMPONENTS = ["localization", "stability", "cross_xai", "cross_arch", "sanity"]
+COMP_LABEL = {"localization": "Localization", "stability": "Stability", "cross_xai": "Cross-XAI",
+              "cross_arch": "Cross-Arch", "sanity": "Sanity"}
+_tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),
+                          transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
 
-def predict(model, img_tensor):
-    model.eval()
+st.set_page_config(page_title="XAI Reliability (CTI)", layout="wide", page_icon="🫀")
+st.markdown("""<style>
+.block-container{padding-top:1.5rem;}
+div[data-testid="stMetricValue"]{font-size:1.35rem;}
+h1{color:#1f3b57;}
+.stTabs [data-baseweb="tab"]{font-size:1.05rem;font-weight:600;}
+</style>""", unsafe_allow_html=True)
+
+
+# ─── cached resources ──────────────────────────────────────────────────────
+@st.cache_resource(show_spinner=False)
+def get_model(name):
+    return xai_core.load_trained(name)
+
+
+@st.cache_data(show_spinner=False)
+def load_results():
+    f = lambda n: pd.read_csv(os.path.join(RESULTS, n)) if os.path.exists(os.path.join(RESULTS, n)) else None
+    return (f("cti_by_model_method.csv"), f("cti_results.csv"), f("cti_confidence_intervals.csv"),
+            f("classification_performance.csv"), f("cti_per_image.csv"))
+
+
+@st.cache_data(show_spinner=False)
+def load_bbox():
+    p = os.path.join(DATA_DIR, "BBox_Cardiomegaly.csv")
+    if not os.path.exists(p):
+        return None
+    return pd.read_csv(p).drop_duplicates("Image Index").set_index("Image Index")
+
+
+@st.cache_data(show_spinner=False)
+def gen_maps(img_bytes, model_name, methods):
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    x = _tf(img).unsqueeze(0).to(DEVICE); x.requires_grad = True
+    model, target, fine = get_model(model_name)
+    return xai_core.generate(model, target, fine, x, methods=methods)
+
+
+@st.cache_data(show_spinner=False)
+def predict(img_bytes, model_name):
+    img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+    x = _tf(img).unsqueeze(0).to(DEVICE)
+    model, _, _ = get_model(model_name)
     with torch.no_grad():
-        output = model(img_tensor.to(DEVICE))
-        prob = torch.sigmoid(output).item()
-    return prob
+        return float(torch.sigmoid(model(x)).item())
 
-def overlay_heatmap(original_img, saliency_map):
-    img_array = np.array(original_img.resize((224, 224)))
-    heatmap = cm.jet(saliency_map)[:, :, :3]
-    heatmap = (heatmap * 255).astype(np.uint8)
-    overlay = (0.5 * img_array + 0.5 * heatmap).astype(np.uint8)
-    return Image.fromarray(overlay)
 
-# ── CTI Data — Complete 5-component results ───────────────
-cti_data = {
-    'gradcam': {
-        'localization': 0.6722, 'stability': 0.9578,
-        'cross_xai': 0.5515, 'cross_arch': 0.2007,
-        'sanity': 0.8375, 'CTI': 0.5745
-    },
-    'gradcampp': {
-        'localization': 0.6723, 'stability': 0.9561,
-        'cross_xai': 0.5515, 'cross_arch': 0.2515,
-        'sanity': 0.6832, 'CTI': 0.5612
-    },
-    'layercam': {
-        'localization': 0.4757, 'stability': 0.8060,
-        'cross_xai': 0.5515, 'cross_arch': 0.0294,
-        'sanity': 0.6995, 'CTI': 0.4499
-    },
-    'integrated_gradients': {
-        'localization': 0.4832, 'stability': 0.6358,
-        'cross_xai': 0.5515, 'cross_arch': 0.4432,
-        'sanity': 0.9403, 'CTI': 0.5362
-    },
-}
+# ─── helpers ───────────────────────────────────────────────────────────────
+def overlay(img, sal, alpha=0.45):
+    base = np.array(img.convert("RGB").resize((224, 224)))
+    heat = (cm.jet(sal)[:, :, :3] * 255).astype(np.uint8)
+    return Image.fromarray(((1 - alpha) * base + alpha * heat).astype(np.uint8))
 
-# ── Streamlit UI ───────────────────────────────────────────
-st.set_page_config(page_title="XAI Reliability Assessment", layout="wide")
+
+def draw_box(img, row):
+    im = img.convert("RGB").resize((224, 224)).copy(); s = 224 / 1024
+    x, y, w, h = row["Bbox [x"] * s, row["y"] * s, row["w"] * s, row["h]"] * s
+    ImageDraw.Draw(im).rectangle([x, y, x + w, y + h], outline=(0, 230, 0), width=3)
+    return im
+
+
+def localization(sal, row, n=224, orig=1024):
+    s = n / orig
+    x1, y1 = max(0, int(row["Bbox [x"] * s)), max(0, int(row["y"] * s))
+    x2, y2 = min(n, int((row["Bbox [x"] + row["w"]) * s)), min(n, int((row["y"] + row["h]"]) * s))
+    gt = np.zeros((n, n)); gt[y1:y2, x1:x2] = 1
+    pred = (sal >= np.percentile(sal, 80)).astype(float)
+    iou = (pred * gt).sum() / (((pred + gt) >= 1).sum() + 1e-8)
+    sf = sal.flatten() + 1e-8; gf = gt.flatten() + 1e-8
+    js = 1 - jensenshannon(sf / sf.sum(), gf / gf.sum())
+    py, px = np.unravel_index(np.argmax(sal), sal.shape)
+    pg = 1.0 if (y1 <= py <= y2 and x1 <= px <= x2) else 0.0
+    return iou, js, pg
+
+
+def prob_gauge(prob):
+    fig, ax = plt.subplots(figsize=(5, 0.9))
+    ax.barh([0], [1], color="#e8e8e8", height=0.5)
+    ax.barh([0], [prob], color=("#c0392b" if prob >= 0.5 else "#27ae60"), height=0.5)
+    ax.axvline(0.5, color="#333", ls="--", lw=1)
+    ax.text(prob, 0, f" {prob*100:.1f}%", va="center",
+            ha="left" if prob < 0.85 else "right", fontsize=11, fontweight="bold")
+    ax.set_xlim(0, 1); ax.set_ylim(-0.5, 0.5); ax.axis("off")
+    ax.text(0.5, -0.55, "threshold 0.5", ha="center", fontsize=7, color="#666")
+    fig.tight_layout(); return fig
+
+
+def radar(values):
+    labels = [COMP_LABEL[c] for c in COMPONENTS]
+    ang = np.linspace(0, 2 * np.pi, len(labels), endpoint=False).tolist(); ang += ang[:1]
+    vals = list(values) + [values[0]]
+    fig, ax = plt.subplots(figsize=(4.2, 4.2), subplot_kw=dict(polar=True))
+    ax.plot(ang, vals, color="#2e6da4", lw=2); ax.fill(ang, vals, color="#2e6da4", alpha=0.25)
+    ax.set_xticks(ang[:-1]); ax.set_xticklabels(labels, fontsize=9)
+    ax.set_ylim(0, 1); ax.set_yticks([0.25, 0.5, 0.75, 1.0]); ax.set_yticklabels(["", "0.5", "", "1.0"], fontsize=7)
+    fig.tight_layout(); return fig
+
+
+def trust_badge(cti):
+    if cti >= 0.62: st.success(f"✅ HIGH TRUSTWORTHINESS — CTI {cti:.3f}")
+    elif cti >= 0.55: st.warning(f"⚠️ MODERATE TRUSTWORTHINESS — CTI {cti:.3f}")
+    else: st.error(f"❌ LOWER TRUSTWORTHINESS — CTI {cti:.3f}")
+
+
+def demo_files():
+    out = {}
+    for sub in ("cardiomegaly", "normal"):
+        d = os.path.join(DEMO_DIR, sub)
+        if os.path.isdir(d):
+            for f in sorted(os.listdir(d)):
+                if f.endswith(".png"): out[f"{sub}/{f}"] = os.path.join(d, f)
+    return out
+
+
+def get_image_bytes(src_mode, uploaded, demo_choice, demos):
+    if src_mode == "Demo image" and demo_choice:
+        with open(demos[demo_choice], "rb") as fh: return fh.read(), os.path.basename(demos[demo_choice])
+    if src_mode == "Upload" and uploaded:
+        return uploaded.getvalue(), uploaded.name
+    return None, None
+
+
+bymm, rank, ci, clf, per_img = load_results()
+bbox = load_bbox()
+demos = demo_files()
+if per_img is not None:
+    per_idx = per_img.set_index(["image_id", "model", "method"])
+else:
+    per_idx = None
 
 st.title("🫀 XAI Reliability Assessment for Cardiomegaly Detection")
-st.markdown("**Composite Trustworthiness Index (CTI) — Saliency-Based XAI Evaluation**")
-st.markdown("---")
+st.caption("Composite Trustworthiness Index (CTI) · NIH ChestX-ray14 · patient-independent split · "
+           "best: Grad-CAM++ + DenseNet121 (CTI 0.715)")
 
-col1, col2 = st.columns([1, 2])
+tab_analyze, tab_compare, tab_results, tab_about = st.tabs(
+    ["🔍 Analyze", "🆚 Compare Methods", "📊 Results", "ℹ️ About"])
 
-with col1:
-    st.subheader("Settings")
-    uploaded_file = st.file_uploader("Upload Chest X-ray", type=["png", "jpg", "jpeg"])
-    model_name = st.selectbox("Select Model", ['densenet121', 'resnet50', 'efficientnet_b4'])
-    xai_method = st.selectbox("Select XAI Method", ['gradcam', 'gradcampp', 'layercam', 'integrated_gradients'])
-    analyze = st.button("Analyze", type="primary")
+# ════════════════════════ TAB 1 — ANALYZE ════════════════════════
+with tab_analyze:
+    c_in, c_out = st.columns([1, 2.4])
+    with c_in:
+        st.subheader("Input")
+        src = st.radio("Image source", ["Demo image", "Upload"], horizontal=True)
+        uploaded = st.file_uploader("Upload chest X-ray", type=["png", "jpg", "jpeg"]) if src == "Upload" else None
+        demo_choice = st.selectbox("Pick a demo image", list(demos), index=0) if (src == "Demo image" and demos) else None
+        model_name = st.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get)
+        method = st.selectbox("XAI method", list(METHOD_LABEL), format_func=METHOD_LABEL.get)
+        go = st.button("Analyze", type="primary", use_container_width=True)
 
-    st.markdown("---")
-    st.markdown("**CTI Components:**")
-    st.markdown("- **Localization** — Heatmap focuses on cardiac region?")
-    st.markdown("- **Stability** — Consistent under small input changes?")
-    st.markdown("- **Cross-XAI** — Do all methods agree?")
-    st.markdown("- **Cross-Arch** — Consistent across architectures?")
-    st.markdown("- **Sanity** — Depends on learned features?")
+    with c_out:
+        img_bytes, fname = get_image_bytes(src, uploaded, demo_choice, demos)
+        if not go:
+            st.info("Choose an image, model, and XAI method, then click **Analyze**.")
+        elif img_bytes is None:
+            st.warning("Please select or upload an image first.")
+        else:
+            image = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+            with st.spinner(f"{METHOD_LABEL[method]} on {MODEL_LABEL[model_name]}…"):
+                prob = predict(img_bytes, model_name)
+                sal = gen_maps(img_bytes, model_name, (method,))[method]
+            pred = "Cardiomegaly" if prob >= 0.5 else "Normal"
+            m1, m2, m3 = st.columns([1, 1, 1])
+            m1.metric("Prediction", pred)
+            m2.metric("Confidence", f"{(prob if prob>=0.5 else 1-prob)*100:.1f}%")
+            m3.metric("Model", MODEL_LABEL[model_name])
+            st.pyplot(prob_gauge(prob))
+            if pred == "Cardiomegaly" and prob < 0.7:
+                st.caption("ℹ️ Sensitivity-tuned models lean positive near 0.5 — weigh the heatmap, not just the label.")
 
-with col2:
-    if uploaded_file and analyze:
-        with st.spinner("Running analysis..."):
-            temp_dir = tempfile.mkdtemp()
-            temp_path = os.path.join(temp_dir, uploaded_file.name)
-            with open(temp_path, 'wb') as f:
-                f.write(uploaded_file.getbuffer())
+            has_box = bbox is not None and fname in bbox.index
+            i1, i2 = st.columns(2)
+            i1.image(draw_box(image, bbox.loc[fname]) if has_box else image.resize((224, 224)),
+                     caption="Original" + (" + ground-truth box" if has_box else ""), use_container_width=True)
+            i2.image(overlay(image, sal), caption=f"{METHOD_LABEL[method]} saliency", use_container_width=True)
 
-            image = Image.open(temp_path).convert('RGB')
+            buf = io.BytesIO(); overlay(image, sal).save(buf, format="PNG")
+            st.download_button("⬇️ Download heatmap", buf.getvalue(),
+                               file_name=f"{os.path.splitext(fname)[0]}_{method}.png", mime="image/png")
 
-            try:
-                model, _ = load_model(model_name)
-                img_tensor = transform(image).unsqueeze(0)
-                prob = predict(model, img_tensor)
-                prediction = "Cardiomegaly" if prob >= 0.5 else "Normal"
-                confidence = prob if prob >= 0.5 else 1 - prob
+            if has_box:
+                iou, js, pg = localization(sal, bbox.loc[fname])
+                st.markdown("**Live localization vs. ground-truth box**")
+                l1, l2, l3 = st.columns(3)
+                l1.metric("IoU", f"{iou:.3f}"); l2.metric("JS similarity", f"{js:.3f}")
+                l3.metric("Pointing game", "hit" if pg else "miss")
 
-                original_dir = r'C:\Users\NMAMIT\cti_project\images'
-                dest_path = os.path.join(original_dir, uploaded_file.name)
-                shutil.copy(temp_path, dest_path)
+            st.divider()
+            img_id = os.path.splitext(fname)[0]
+            row = None
+            if per_idx is not None and (img_id, model_name, method) in per_idx.index:
+                row = per_idx.loc[(img_id, model_name, method)]
+                src_note = "per-image CTI (this exact image)"
+            elif bymm is not None:
+                r = bymm[(bymm.model == model_name) & (bymm.method == method)]
+                if not r.empty: row = r.iloc[0]; src_note = "population-mean CTI for this model+method"
+            if row is not None:
+                st.subheader(f"CTI — {METHOD_LABEL[method]} on {MODEL_LABEL[model_name]}")
+                st.caption(src_note)
+                cc1, cc2 = st.columns([1.1, 1])
+                with cc1:
+                    cols = st.columns(3)
+                    for k, c in enumerate(COMPONENTS):
+                        cols[k % 3].metric(COMP_LABEL[c], f"{row[c]:.3f}")
+                    st.metric("CTI", f"{row['cti']:.3f}"); trust_badge(float(row["cti"]))
+                with cc2:
+                    st.pyplot(radar([float(row[c]) for c in COMPONENTS]))
 
-                maps = generate_xai_maps(model_name, uploaded_file.name)
-                saliency = maps.get(xai_method)
+# ════════════════════════ TAB 2 — COMPARE METHODS ════════════════════════
+with tab_compare:
+    st.subheader("Compare all 5 XAI methods on one image")
+    cc1, cc2 = st.columns([1, 1])
+    csrc = cc1.radio("Image source", ["Demo image", "Upload"], horizontal=True, key="csrc")
+    cup = cc1.file_uploader("Upload", type=["png", "jpg", "jpeg"], key="cup") if csrc == "Upload" else None
+    cdemo = cc1.selectbox("Demo image", list(demos), key="cdemo") if (csrc == "Demo image" and demos) else None
+    cmodel = cc2.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get, key="cmodel")
+    cgo = cc2.button("Compare", type="primary")
+    if cgo:
+        cb, cfn = get_image_bytes(csrc, cup, cdemo, demos)
+        if cb is None:
+            st.warning("Select or upload an image first.")
+        else:
+            cimg = Image.open(io.BytesIO(cb)).convert("RGB")
+            with st.spinner("Generating all 5 saliency maps…"):
+                maps = gen_maps(cb, cmodel, tuple(METHOD_LABEL))
+            cid = os.path.splitext(cfn)[0]
+            # per-image CTI if known, else model-mean
+            def mcti(m):
+                if per_idx is not None and (cid, cmodel, m) in per_idx.index:
+                    return float(per_idx.loc[(cid, cmodel, m)]["cti"])
+                if bymm is not None:
+                    r = bymm[(bymm.model == cmodel) & (bymm.method == m)]
+                    return float(r.iloc[0]["cti"]) if not r.empty else float("nan")
+                return float("nan")
+            scores = {m: mcti(m) for m in METHOD_LABEL}
+            best = max(scores, key=lambda k: (scores[k] if not np.isnan(scores[k]) else -1))
+            cols = st.columns(6)
+            cols[0].image(cimg.resize((224, 224)), caption="Original", use_container_width=True)
+            for col, m in zip(cols[1:], METHOD_LABEL):
+                star = " ⭐" if m == best else ""
+                col.image(overlay(cimg, maps[m]),
+                          caption=f"{METHOD_LABEL[m]}{star}\nCTI {scores[m]:.3f}", use_container_width=True)
+            fig, ax = plt.subplots(figsize=(9, 2.6))
+            ax.bar([METHOD_LABEL[m] for m in METHOD_LABEL], [scores[m] for m in METHOD_LABEL],
+                   color=["#27ae60" if m == best else "#7fb3d5" for m in METHOD_LABEL])
+            ax.set_ylim(0, 0.8); ax.set_ylabel("CTI"); ax.tick_params(axis="x", labelrotation=15)
+            st.pyplot(fig)
 
-                if os.path.exists(dest_path):
-                    os.remove(dest_path)
+# ════════════════════════ TAB 3 — RESULTS ════════════════════════
+with tab_results:
+    st.subheader("Classification performance (test set)")
+    if clf is not None:
+        st.dataframe(clf, use_container_width=True, hide_index=True)
+    st.subheader("XAI trustworthiness ranking (mean CTI, 95% CI)")
+    if ci is not None:
+        show = ci.copy(); show["method"] = show["method"].map(METHOD_LABEL)
+        show["95% CI"] = show.apply(lambda r: f"[{r['ci_low']:.3f}, {r['ci_high']:.3f}]", axis=1)
+        st.dataframe(show[["rank", "method", "mean_cti", "95% CI"]], use_container_width=True, hide_index=True)
+    g1, g2 = st.columns(2)
+    for col, fig in [(g1, "cti_heatmap.png"), (g2, "component_breakdown.png")]:
+        p = os.path.join(RESULTS, fig)
+        if os.path.exists(p): col.image(p, use_container_width=True)
+    p = os.path.join(RESULTS, "roc_curves.png")
+    if os.path.exists(p): st.image(p, use_container_width=True)
 
-                # ── Results header ─────────────────────────
-                st.subheader("Results")
-                r1, r2, r3 = st.columns(3)
-                r1.metric("Prediction", prediction)
-                r2.metric("Confidence", f"{confidence*100:.1f}%")
-                r3.metric("Model", model_name.upper())
+# ════════════════════════ TAB 4 — ABOUT ════════════════════════
+with tab_about:
+    st.subheader("What is the Composite Trustworthiness Index?")
+    st.markdown("""
+CTI measures *how much you can trust* a saliency explanation — not just whether the
+prediction is right. It averages **five equally weighted dimensions** (each 0–1):
 
-                st.markdown("---")
+| Component | Question it answers |
+|---|---|
+| **Localization** | Does the heatmap land on the cardiac region (vs. the ground-truth box)? |
+| **Stability** | Is the map robust to small input perturbations (noise, brightness, rotation)? |
+| **Cross-XAI** | Do the five methods agree with each other? |
+| **Cross-Arch** | Is the explanation consistent across DenseNet / ResNet / EfficientNet? |
+| **Sanity** | Does the map depend on *learned* weights (vs. a randomized model)? |
 
-                # ── Images ─────────────────────────────────
-                img_col1, img_col2 = st.columns(2)
-                with img_col1:
-                    st.image(image.resize((224, 224)),
-                             caption="Original X-ray",
-                             use_container_width=True)
-                with img_col2:
-                    if saliency is not None and saliency.shape == (224, 224):
-                        overlay = overlay_heatmap(image, saliency)
-                        st.image(overlay,
-                                 caption=f"{xai_method} Heatmap",
-                                 use_container_width=True)
+**Dataset:** NIH ChestX-ray14, Cardiomegaly vs. Normal, strict patient-independent split
+(zero patient leakage). **Models:** DenseNet121, ResNet50, EfficientNet-B4 (all AUC ≥ 0.83).
+**Methods:** Grad-CAM, Grad-CAM++, Score-CAM, Layer-CAM, Integrated Gradients.
 
-                st.markdown("---")
-
-                # ── CTI Scores ─────────────────────────────
-                st.subheader("CTI Component Scores")
-                scores = cti_data.get(xai_method, {})
-                if scores:
-                    c1, c2, c3, c4, c5, c6 = st.columns(6)
-                    c1.metric("Localization", f"{scores['localization']:.3f}")
-                    c2.metric("Stability",    f"{scores['stability']:.3f}")
-                    c3.metric("Cross-XAI",    f"{scores['cross_xai']:.3f}")
-                    c4.metric("Cross-Arch",   f"{scores['cross_arch']:.3f}")
-                    c5.metric("Sanity",       f"{scores['sanity']:.3f}")
-                    c6.metric("CTI Score",    f"{scores['CTI']:.3f}",
-                              delta="Best" if xai_method == 'gradcam' else None)
-
-                    st.markdown("---")
-
-                    # ── Trustworthiness Rating ──────────────
-                    st.subheader("🏆 Trustworthiness Rating")
-                    cti_val = scores['CTI']
-                    if cti_val >= 0.55:
-                        st.success(f"✅ HIGH TRUSTWORTHINESS — CTI: {cti_val:.3f} — This XAI method is clinically reliable for Cardiomegaly detection.")
-                    elif cti_val >= 0.50:
-                        st.warning(f"⚠️ MODERATE TRUSTWORTHINESS — CTI: {cti_val:.3f} — Use with caution in clinical settings.")
-                    else:
-                        st.error(f"❌ LOW TRUSTWORTHINESS — CTI: {cti_val:.3f} — This method is not recommended for clinical use.")
-
-                    # ── Ranking ────────────────────────────
-                    st.markdown("---")
-                    st.subheader("📊 Method Ranking")
-                    ranking_data = {
-                        'Method': ['Grad-CAM', 'Grad-CAM++', 'Integrated Gradients', 'Layer-CAM'],
-                        'CTI Score': [0.5745, 0.5612, 0.5362, 0.4499],
-                        'Rank': ['🥇 1st', '🥈 2nd', '🥉 3rd', '4th']
-                    }
-                    import pandas as pd
-                    st.dataframe(pd.DataFrame(ranking_data), use_container_width=True)
-
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-                st.info("Make sure model weights are trained and saved in the models folder.")
-    else:
-        st.info("Upload a chest X-ray and click Analyze to begin.")
-        st.markdown("""
-        **About this tool:**
-        - Evaluates XAI reliability using the Composite Trustworthiness Index (CTI)
-        - Compares 4 saliency-based XAI methods across 5 reliability dimensions
-        - Tested on NIH ChestX-ray14 dataset
-        - Novel contribution: first CTI framework for medical XAI evaluation
-        
-        **How to use:**
-        1. Upload a chest X-ray image
-        2. Select a model and XAI method
-        3. Click Analyze
-        4. View prediction, heatmap, and CTI trustworthiness rating
-        """)
+**Headline:** Grad-CAM++ is the most trustworthy method (mean CTI 0.662); best single
+combination is **Grad-CAM++ + DenseNet121 (CTI 0.715)**.
+""")
+    st.caption("Tip: launch with the cti_project env — "
+               "`...\\envs\\cti_project\\python.exe -m streamlit run app.py`")
