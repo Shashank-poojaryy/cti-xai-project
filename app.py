@@ -90,6 +90,12 @@ def load_operating_points():
     return pd.read_csv(p) if os.path.exists(p) else None
 
 
+@st.cache_data(show_spinner=False)
+def load_csv(name):
+    p = os.path.join(RESULTS, name)
+    return pd.read_csv(p) if os.path.exists(p) else None
+
+
 def get_threshold(op_df, model_name, op_key):
     """Per-model decision threshold from operating_points.csv (falls back to 0.5)."""
     if op_df is None:
@@ -185,6 +191,8 @@ def get_image_bytes(src_mode, uploaded, test_choice=None):
 bymm, rank, ci, clf, per_img = load_results()
 bbox = load_bbox()
 op_df = load_operating_points()
+prev_m = load_csv("prevalence_aware_metrics.csv")
+clin = load_csv("clinical_operating_points.csv")
 test_idx = load_test_index()
 if per_img is not None:
     per_idx = per_img.set_index(["image_id", "model", "method"])
@@ -339,20 +347,63 @@ with tab_compare:
 
 # ════════════════════════ TAB 3 — RESULTS ════════════════════════
 with tab_results:
-    st.subheader("Classification performance (test set)")
-    if clf is not None:
+    def show_fig_grid(names):
+        present = [n for n in names if os.path.exists(os.path.join(RESULTS, n))]
+        for i in range(0, len(present), 2):
+            cols = st.columns(2)
+            for col, n in zip(cols, present[i:i + 2]):
+                col.image(os.path.join(RESULTS, n), use_container_width=True)
+
+    st.subheader("Classification performance — held-out test set (4% prevalence)")
+    if prev_m is not None:
+        d = prev_m.copy()
+        disp = pd.DataFrame({
+            "Model": d["Model"],
+            "AUC-ROC (95% CI)": d.apply(lambda r: f"{r.AUC_ROC:.3f}  [{r.AUC_CI_low:.3f}, {r.AUC_CI_high:.3f}]", axis=1),
+            "AUPRC (95% CI)": d.apply(lambda r: f"{r.AUPRC:.3f}  [{r.AUPRC_CI_low:.3f}, {r.AUPRC_CI_high:.3f}]", axis=1),
+            "AUPRC vs no-skill": d["AUPRC_over_baseline"].map(lambda v: f"{v:.1f}×"),
+            "Brier": d["Brier"].map(lambda v: f"{v:.3f}"),
+        })
+        st.dataframe(disp, use_container_width=True, hide_index=True)
+        st.caption("Cardiomegaly prevalence is 4.05%, so the no-skill AUPRC baseline is 0.040 — "
+                   "all models beat it 4.6–7.5×. AUC-ROC is prevalence-independent; AUPRC and "
+                   "Brier reflect the low-prevalence regime.")
+    elif clf is not None:
         st.dataframe(clf, use_container_width=True, hide_index=True)
+
+    st.subheader("Calibrated decision thresholds (used by the Analyze tab)")
+    if op_df is not None:
+        f1 = op_df[op_df["operating_point"] == "F1_optimal"][
+            ["Model", "threshold", "Precision", "Recall", "Specificity", "F1"]].copy()
+        f1.columns = ["Model", "Threshold", "Precision", "Recall", "Specificity", "F1"]
+        st.dataframe(f1.round(3), use_container_width=True, hide_index=True)
+        st.caption("Imbalance-corrected models score high, so a naïve 0.5 over-calls Cardiomegaly. "
+                   "The app decides at each model's F1-optimal threshold (~0.99) → 94–97% "
+                   "specificity on normal X-rays.")
+
+    st.subheader("Clinical screening operating points")
+    if clin is not None:
+        c = clin.copy()
+        c["target_recall"] = (c["target_recall"] * 100).map(lambda v: f"{v:.0f}%")
+        c = c[["Model", "target_recall", "threshold", "achieved_recall",
+               "Precision", "Specificity", "FP_per_1000_scans"]]
+        c.columns = ["Model", "Target recall", "Threshold", "Achieved recall",
+                     "Precision", "Specificity", "FP / 1000 scans"]
+        st.dataframe(c.round(3), use_container_width=True, hide_index=True)
+        st.caption("Sensitivity-first thresholds for screening: e.g. at 90% recall the models flag "
+                   "~210–275 false positives per 1000 scans — the cost of catching 9 of 10 true "
+                   "cases at 4% prevalence.")
+
     st.subheader("XAI trustworthiness ranking (mean CTI, 95% CI)")
     if ci is not None:
         show = ci.copy(); show["method"] = show["method"].map(METHOD_LABEL)
         show["95% CI"] = show.apply(lambda r: f"[{r['ci_low']:.3f}, {r['ci_high']:.3f}]", axis=1)
         st.dataframe(show[["rank", "method", "mean_cti", "95% CI"]], use_container_width=True, hide_index=True)
-    g1, g2 = st.columns(2)
-    for col, fig in [(g1, "cti_heatmap.png"), (g2, "component_breakdown.png")]:
-        p = os.path.join(RESULTS, fig)
-        if os.path.exists(p): col.image(p, use_container_width=True)
-    p = os.path.join(RESULTS, "roc_curves.png")
-    if os.path.exists(p): st.image(p, use_container_width=True)
+
+    st.subheader("Classification figures")
+    show_fig_grid(["roc_curves.png", "pr_curves.png", "threshold_curves.png", "f1_prevalence_effect.png"])
+    st.subheader("CTI figures")
+    show_fig_grid(["cti_heatmap.png", "component_breakdown.png"])
 
 # ════════════════════════ TAB 4 — ABOUT ════════════════════════
 with tab_about:
