@@ -28,6 +28,7 @@ import xai_core
 
 ROOT = r"C:\Users\NMAMIT\cti_project"
 DATA_DIR, RESULTS, DEMO_DIR = (os.path.join(ROOT, d) for d in ("data", "results", "demo_images"))
+IMAGE_DIR = os.path.join(ROOT, "images")  # full NIH set (gitignored); test images live here
 DEVICE = xai_core.DEVICE
 
 MODEL_LABEL = {"densenet121": "DenseNet121", "resnet50": "ResNet50", "efficientnet_b4": "EfficientNet-B4"}
@@ -74,6 +75,17 @@ def load_bbox():
     if not os.path.exists(p):
         return None
     return pd.read_csv(p).drop_duplicates("Image Index").set_index("Image Index")
+
+
+@st.cache_data(show_spinner=False)
+def load_test_index():
+    """All 12,903 held-out test images with true labels (read live from test.csv)."""
+    p = os.path.join(DATA_DIR, "test.csv")
+    if not os.path.exists(p):
+        return None
+    df = pd.read_csv(p)[["Image Index", "label"]].copy()
+    df["true"] = df["label"].map({0: "Normal", 1: "Cardiomegaly"})
+    return df
 
 
 @st.cache_data(show_spinner=False)
@@ -174,9 +186,13 @@ def demo_files():
     return out
 
 
-def get_image_bytes(src_mode, uploaded, demo_choice, demos):
+def get_image_bytes(src_mode, uploaded, demo_choice, demos, test_choice=None):
     if src_mode == "Demo image" and demo_choice:
         with open(demos[demo_choice], "rb") as fh: return fh.read(), os.path.basename(demos[demo_choice])
+    if src_mode == "Test set" and test_choice:
+        p = os.path.join(IMAGE_DIR, test_choice)
+        if os.path.exists(p):
+            with open(p, "rb") as fh: return fh.read(), test_choice
     if src_mode == "Upload" and uploaded:
         return uploaded.getvalue(), uploaded.name
     return None, None
@@ -185,6 +201,7 @@ def get_image_bytes(src_mode, uploaded, demo_choice, demos):
 bymm, rank, ci, clf, per_img = load_results()
 bbox = load_bbox()
 op_df = load_operating_points()
+test_idx = load_test_index()
 demos = demo_files()
 if per_img is not None:
     per_idx = per_img.set_index(["image_id", "model", "method"])
@@ -203,9 +220,18 @@ with tab_analyze:
     c_in, c_out = st.columns([1, 2.4])
     with c_in:
         st.subheader("Input")
-        src = st.radio("Image source", ["Demo image", "Upload"], horizontal=True)
+        has_testset = test_idx is not None and os.path.isdir(IMAGE_DIR)
+        sources = ["Demo image"] + (["Test set"] if has_testset else []) + ["Upload"]
+        src = st.radio("Image source", sources, horizontal=True)
         uploaded = st.file_uploader("Upload chest X-ray", type=["png", "jpg", "jpeg"]) if src == "Upload" else None
         demo_choice = st.selectbox("Pick a demo image", list(demos), index=0) if (src == "Demo image" and demos) else None
+        test_choice = None
+        if src == "Test set" and has_testset:
+            cls = st.selectbox("Class filter", ["All", "Normal", "Cardiomegaly"])
+            pool = test_idx if cls == "All" else test_idx[test_idx["true"] == cls]
+            ids = pool["Image Index"].tolist()
+            st.caption(f"{len(ids):,} held-out test images available (true label shown after Analyze).")
+            test_choice = st.selectbox("Pick a test image", ids, index=0) if ids else None
         model_name = st.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get)
         method = st.selectbox("XAI method", list(METHOD_LABEL), format_func=METHOD_LABEL.get)
         op_key = st.selectbox("Decision threshold", list(OP_LABEL), format_func=OP_LABEL.get,
@@ -214,7 +240,7 @@ with tab_analyze:
         go = st.button("Analyze", type="primary", use_container_width=True)
 
     with c_out:
-        img_bytes, fname = get_image_bytes(src, uploaded, demo_choice, demos)
+        img_bytes, fname = get_image_bytes(src, uploaded, demo_choice, demos, test_choice)
         if not go:
             st.info("Choose an image, model, and XAI method, then click **Analyze**.")
         elif img_bytes is None:
@@ -234,6 +260,14 @@ with tab_analyze:
             st.caption(f"ℹ️ {MODEL_LABEL[model_name]} is sensitivity-tuned, so raw scores sit high. "
                        f"Decision uses the **{OP_LABEL[op_key].split(' —')[0]}** threshold ({thr:.3f}); "
                        f"a score below it reads **Normal**. Always weigh the heatmap, not just the label.")
+            if test_idx is not None:
+                gt = test_idx[test_idx["Image Index"] == fname]
+                if not gt.empty:
+                    truth = gt.iloc[0]["true"]
+                    ok = (truth == pred)
+                    (st.success if ok else st.error)(
+                        f"{'✅ Correct' if ok else '❌ Incorrect'} — ground truth: **{truth}** "
+                        f"(held-out test set){'' if ok else f', predicted {pred}'}")
 
             has_box = bbox is not None and fname in bbox.index
             i1, i2 = st.columns(2)
