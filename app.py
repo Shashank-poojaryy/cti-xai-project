@@ -311,13 +311,21 @@ with tab_analyze:
 with tab_compare:
     st.subheader("Compare all 5 XAI methods on one image")
     cc1, cc2 = st.columns([1, 1])
-    csrc = cc1.radio("Image source", ["Demo image", "Upload"], horizontal=True, key="csrc")
+    csources = ["Demo image"] + (["Test set"] if has_testset else []) + ["Upload"]
+    csrc = cc1.radio("Image source", csources, horizontal=True, key="csrc")
     cup = cc1.file_uploader("Upload", type=["png", "jpg", "jpeg"], key="cup") if csrc == "Upload" else None
     cdemo = cc1.selectbox("Demo image", list(demos), key="cdemo") if (csrc == "Demo image" and demos) else None
+    ctest = None
+    if csrc == "Test set" and has_testset:
+        ccls = cc1.selectbox("Class filter", ["All", "Normal", "Cardiomegaly"], key="ccls")
+        cpool = test_idx if ccls == "All" else test_idx[test_idx["true"] == ccls]
+        cids = cpool["Image Index"].tolist()
+        cc1.caption(f"{len(cids):,} held-out test images available.")
+        ctest = cc1.selectbox("Pick a test image", cids, key="ctest") if cids else None
     cmodel = cc2.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get, key="cmodel")
     cgo = cc2.button("Compare", type="primary")
     if cgo:
-        cb, cfn = get_image_bytes(csrc, cup, cdemo, demos)
+        cb, cfn = get_image_bytes(csrc, cup, cdemo, demos, ctest)
         if cb is None:
             st.warning("Select or upload an image first.")
         else:
@@ -335,6 +343,10 @@ with tab_compare:
                 return float("nan")
             scores = {m: mcti(m) for m in METHOD_LABEL}
             best = max(scores, key=lambda k: (scores[k] if not np.isnan(scores[k]) else -1))
+            if test_idx is not None:
+                cgt = test_idx[test_idx["Image Index"] == cfn]
+                if not cgt.empty:
+                    st.caption(f"Ground truth (held-out test set): **{cgt.iloc[0]['true']}**")
             cols = st.columns(6)
             cols[0].image(cimg.resize((224, 224)), caption="Original", use_container_width=True)
             for col, m in zip(cols[1:], METHOD_LABEL):
