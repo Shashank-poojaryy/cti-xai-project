@@ -40,7 +40,7 @@ Because the split changed, **all three models were retrained** and every downstr
 | 6 | 4 / 5 | Incorrect methodology: "Layer-CAM" was Grad-CAM on a shallow layer; sanity check used Grad-CAM for every method | Mislabeled method; invalid sanity metric | True element-wise Layer-CAM; same-method, seeded random-model sanity check |
 | 7 | 5 — CTI | Incomplete/throwaway CTI: partial CSVs, only 4 methods, `cross_arch = 0`, no checkpointing | Results incomplete and non-resumable | Full 5-metric pipeline, all 15 combinations, per-image checkpointing |
 | 8 | 8 — Stats | No statistical rigor: missing Friedman/Wilcoxon; broken pathology correlation; 150-DPI figures | Below Q1/Q2 evidence bar | Friedman + Wilcoxon/Bonferroni + Cohen's d + bootstrap CIs; all figures at 300 DPI |
-| 9 | 2 / 7 | Class imbalance → low precision/F1; accuracy misleading at ~96% imbalance | Headline F1 understates models | AUC-ROC as primary metric; threshold tuning (e.g. EfficientNet specificity 0.25 → 0.75); focal-loss ablation **completed** (Section 3.8) — confirms low F1 is a calibration artifact + prevalence-bound ceiling |
+| 9 | 2 / 7 | Class imbalance → low precision/F1; accuracy misleading at ~96% imbalance | Headline F1 understates models | AUC-ROC as primary metric; threshold tuning (e.g. EfficientNet specificity 0.25 → 0.75); focal-loss ablation **completed** (Section 3.9) — confirms low F1 is a calibration artifact + prevalence-bound ceiling |
 | 10 | 9 — App | Stale Streamlit app (hardcoded old CTI, no Score-CAM, wrong ranking); dual-server `ModuleNotFoundError: torch` (base env vs cti_project env) | Demo showed wrong numbers / crashed | Rewrote app to read live results; killed the base-env server; documented correct launch command |
 
 ---
@@ -57,6 +57,6 @@ Most issues traced back to two themes:
 ## 4. Status summary
 
 - **Resolved (10 of 10):** leakage, paths/env, training, runtime, Score-CAM, methodology (Layer-CAM + sanity), CTI completeness, statistical rigor, app, and low F1 (#9).
-- **Low F1 (#9) — resolved as a reported finding (Section 3.8).** The focal-loss ablation (`focal_train.py` → `models_v2/`) was run: it nearly doubled F1@0.5 and restored a near-default optimal threshold (0.99 → 0.66–0.71), proving the low headline F1 was a *calibration artifact* of the dual imbalance correction; but best-achievable F1 rose only marginally (≈+0.01), proving the ceiling is *prevalence-bound* at ~4%. The original models are retained for CTI (marginally higher AUC); F1 is reported at the tuned operating point (~0.36–0.37). No retrain adoption was needed.
+- **Low F1 (#9) — resolved as a reported finding (Section 3.9).** The focal-loss ablation (`focal_train.py` → `models_v2/`) was run: it nearly doubled F1@0.5 and restored a near-default optimal threshold (0.99 → 0.66–0.71), proving the low headline F1 was a *calibration artifact* of the dual imbalance correction; but best-achievable F1 rose only marginally (≈+0.01), proving the ceiling is *prevalence-bound* at ~4%. The original models are retained for CTI (marginally higher AUC); F1 is reported at the tuned operating point (~0.36–0.37). No retrain adoption was needed.
 
 No Q1/Q2 blockers remain: the four classic rejection triggers — data leakage, missing statistical tests, incomplete XAI methods, and sub-threshold AUC — are all cleared.

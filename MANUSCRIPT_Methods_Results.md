@@ -47,13 +47,13 @@ Method-level CTI distributions (per-image CTI averaged across the three models, 
 ### 3.1 Classification performance
 All three models exceeded the AUC-ROC ≥ 0.80 acceptance threshold on the held-out, patient-independent test set (**Table 1**, Fig. 7). ResNet50 and DenseNet121 were strongest (AUC 0.897 and 0.894); EfficientNet-B4 trailed at 0.832.
 
-**Table 1. Test-set classification performance (threshold 0.5).**
+**Table 1. Test-set classification performance (threshold 0.5).** AUPRC (average precision) is the prevalence-robust counterpart to AUC-ROC; the no-skill AUPRC equals the test prevalence (0.041).
 
-| Model | AUC-ROC (95% CI) | F1 | Precision | Recall | Specificity | Balanced Acc |
-|---|---|---|---|---|---|---|
-| DenseNet121 | 0.894 (0.883–0.905) | 0.190 | 0.106 | 0.933 | 0.668 | 0.801 |
-| ResNet50 | 0.897 (0.885–0.908) | 0.235 | 0.136 | 0.868 | 0.768 | 0.818 |
-| EfficientNet-B4 | 0.832 (0.817–0.846) | 0.100 | 0.053 | 0.989 | 0.249 | 0.619 |
+| Model | AUC-ROC (95% CI) | AUPRC | F1 | Precision | Recall | Specificity | Balanced Acc |
+|---|---|---|---|---|---|---|---|
+| DenseNet121 | 0.894 (0.883–0.905) | 0.294 | 0.190 | 0.106 | 0.933 | 0.668 | 0.801 |
+| ResNet50 | 0.897 (0.885–0.908) | 0.305 | 0.235 | 0.136 | 0.868 | 0.768 | 0.818 |
+| EfficientNet-B4 | 0.832 (0.817–0.846) | 0.188 | 0.100 | 0.053 | 0.989 | 0.249 | 0.619 |
 
 Because training emphasized sensitivity to the rare class, the default 0.5 threshold over-predicted positives (low precision and, for EfficientNet-B4, low specificity). At a validation-tuned operating point (Youden's J), specificity rose substantially without affecting AUC — DenseNet121 to 0.813, ResNet50 to 0.791, and EfficientNet-B4 from 0.249 to **0.753** (balanced accuracy 0.811 / 0.819 / 0.747) — confirming the models are well-calibrated rankers whose operating point is simply tunable.
 
@@ -85,7 +85,16 @@ Per-image CTI correlated positively with cardiomegaly bounding-box area for four
 ### 3.7 Leakage-free robustness
 Restricting the analysis to the 27 bounding-box images that fall in the held-out test split (zero patient overlap with training) reproduced the ranking: Grad-CAM++ remained first (0.656), with Layer-CAM (0.617) and Grad-CAM (0.614) essentially tied, confirming the result is not driven by training-set images.
 
-### 3.8 Loss-function ablation: calibration and the F1 ceiling
+### 3.8 Performance under low prevalence
+The test set preserves the real-world cardiomegaly prevalence of **4.05%** (522 positives among 12,903 images) under the strict patient-independent split; the class distribution was deliberately left unaltered (no oversampling or test-set rebalancing). At this prevalence, **F1 at a fixed 0.5 threshold is mathematically constrained** — precision is bounded by the base rate — so a low F1@0.5 reflects the operating point and class distribution rather than weak discrimination. We therefore adopt **prevalence-robust metrics as the headline**: AUC-ROC is prevalence-invariant, and AUPRC (average precision) is the appropriate summary for imbalanced detection because its **no-skill baseline equals the prevalence (0.0405)**.
+
+All three models far exceed this baseline (**Table 1**, Fig. 8): ResNet50 attains **AUPRC = 0.305 (7.5× the no-skill value)**, DenseNet121 0.294 (7.3×), and EfficientNet-B4 0.188 (4.6×), while maintaining AUC-ROC of 0.832–0.897. The high F1-optimal thresholds for all models (~0.99) are a direct consequence of the strong positive-class weighting during training (pos_weight = 21.06), which shifts the predicted-probability distribution upward; the ranking quality captured by AUC-ROC and AUPRC is unaffected by this shift.
+
+That the low F1 is **distributional, not model-driven**, is shown directly in **Fig. 9**: holding ResNet50 and its threshold fixed and artificially raising prevalence by subsampling negatives (illustration only — the main results always use the real 4.05% set), **F1 rises monotonically from 0.384 at 4% to 0.544 at 50% prevalence while AUC-ROC stays flat (0.897 → 0.895)**. Recall is unchanged across these subsets, so the entire F1 gain comes from precision improving as the base rate rises.
+
+Framed for **screening**, where high sensitivity matters more than F1, ResNet50 reaches **90% recall at 72.8% specificity (≈261 false positives per 1,000 scans)** — a clinically actionable operating point that raw F1@0.5 fails to convey.
+
+### 3.9 Loss-function ablation: calibration and the F1 ceiling
 The low F1 at threshold 0.5 (Table 1) reflects the **dual imbalance correction** used in training (weighted BCE with pos_weight = 21 *and* a minority oversampler), which deliberately shifts the decision boundary toward the positive class to maximize sensitivity. To separate this calibration effect from intrinsic discriminative ability, we retrained all three backbones with a **focal loss** (α = 0.6, γ = 2) and a single, milder imbalance correction, leaving the architecture and patient-independent split unchanged (**Table 3**).
 
 **Table 3. Loss-function ablation on the patient-independent test set (dual-corrected weighted-BCE → focal loss).**
@@ -103,4 +112,4 @@ Focal loss **nearly doubled F1 at the default 0.5 threshold** (e.g. ResNet50 0.2
 ## Key statement
 Among all 15 model–XAI combinations evaluated on NIH ChestX-ray14 cardiomegaly detection under a strict patient-independent split, **Grad-CAM++ with DenseNet121 achieved the highest Composite Trustworthiness Index (0.715)**, and Grad-CAM++ was the most reliable method overall (mean CTI 0.662, 95% CI 0.656–0.668). The ranking was statistically significant (Friedman χ² = 420.8, p < 0.001; all pairwise Wilcoxon significant at Bonferroni α = 0.005; Cohen's d = 2.88), stable across three weighting schemes, and reproduced on a leakage-free subset, while explanation reliability correlated with pathology size for four of five methods.
 
-*Figures: Fig. 1 `cti_heatmap`, Fig. 2 `component_breakdown`, Fig. 3 `training_curves`, Fig. 4 `sample_heatmaps`, Fig. 5 `sensitivity_analysis`, Fig. 6 `pathology_correlation`, Fig. 7 `roc_curves` (all 300 DPI, .png/.pdf in `results/`).*
+*Figures: Fig. 1 `cti_heatmap`, Fig. 2 `component_breakdown`, Fig. 3 `training_curves`, Fig. 4 `sample_heatmaps`, Fig. 5 `sensitivity_analysis`, Fig. 6 `pathology_correlation`, Fig. 7 `roc_curves`, Fig. 8 `pr_curves` (precision-recall with no-skill baseline + AUPRC), Fig. 9 `f1_prevalence_effect` (F1 vs. prevalence at fixed threshold) (all 300 DPI, .png/.pdf in `results/`).*

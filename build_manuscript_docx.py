@@ -65,6 +65,10 @@ def figure(fname, caption):
 
 # ── load numbers ──
 clf = pd.read_csv(os.path.join(RES, "classification_performance.csv"))
+prev_path = os.path.join(RES, "prevalence_aware_metrics.csv")
+prev = pd.read_csv(prev_path).set_index("Model") if os.path.exists(prev_path) else None
+clin_path = os.path.join(RES, "clinical_operating_points.csv")
+clin = pd.read_csv(clin_path) if os.path.exists(clin_path) else None
 cti = pd.read_csv(os.path.join(RES, "cti_results.csv"))
 ci = pd.read_csv(os.path.join(RES, "cti_confidence_intervals.csv")).set_index("method")
 bymm = pd.read_csv(os.path.join(RES, "cti_by_model_method.csv"))
@@ -198,11 +202,15 @@ P("All three models exceeded the AUC-ROC 0.80 threshold on the patient-independe
   "threshold over-predicted positives; at a validation-tuned operating point (Youden's J) "
   "specificity rose to 0.81 (DenseNet121), 0.79 (ResNet50), and 0.75 (EfficientNet-B4, from 0.25) "
   "without affecting AUC, confirming the models are well-calibrated rankers.", align="justify")
-clf_rows = [[r["Model"], f'{r["AUC-ROC"]:.3f} {r["AUC 95% CI"]}', f'{r["F1"]:.3f}',
-             f'{r["Precision"]:.3f}', f'{r["Recall"]:.3f}', f'{r["Specificity"]:.3f}',
-             f'{r["Balanced Acc"]:.3f}'] for _, r in clf.iterrows()]
-table(["Model", "AUC-ROC (95% CI)", "F1", "Precision", "Recall", "Specificity", "Bal. Acc"],
-      clf_rows, "Table 1. Test-set classification performance (threshold 0.5).")
+def _auprc(model):
+    return f'{prev.loc[model, "AUPRC"]:.3f}' if prev is not None and model in prev.index else "-"
+clf_rows = [[r["Model"], f'{r["AUC-ROC"]:.3f} {r["AUC 95% CI"]}', _auprc(r["Model"]),
+             f'{r["F1"]:.3f}', f'{r["Precision"]:.3f}', f'{r["Recall"]:.3f}',
+             f'{r["Specificity"]:.3f}', f'{r["Balanced Acc"]:.3f}'] for _, r in clf.iterrows()]
+table(["Model", "AUC-ROC (95% CI)", "AUPRC", "F1", "Precision", "Recall", "Specificity", "Bal. Acc"],
+      clf_rows, "Table 1. Test-set classification performance (threshold 0.5). AUPRC (average "
+      "precision) is the prevalence-robust counterpart to AUC-ROC; the no-skill AUPRC equals the "
+      "test prevalence (0.041).")
 
 H("3.2 Trustworthiness ranking (CTI)", 2)
 P("Across all 15 combinations, Grad-CAM++ with DenseNet121 achieved the highest CTI (0.715; "
@@ -245,10 +253,46 @@ P("Restricting analysis to the 27 bounding-box images in the held-out test split
   "ranking, with Grad-CAM++ first (0.656), confirming the result is not driven by training images.",
   align="justify")
 
+if prev is not None:
+    H("3.8 Performance under low prevalence", 2)
+    P("The test set preserves the real-world cardiomegaly prevalence of 4.05% (522 positives among "
+      "12,903 images) under the strict patient-independent split; the class distribution was "
+      "deliberately left unaltered, with no oversampling or test-set rebalancing. At this prevalence "
+      "the F1 score at a fixed 0.5 threshold is mathematically constrained, because precision is "
+      "bounded by the base rate; a low F1@0.5 therefore reflects the operating point and class "
+      "distribution rather than weak discrimination. We accordingly adopt prevalence-robust metrics "
+      "as the headline. AUC-ROC is prevalence-invariant, and the area under the precision-recall "
+      "curve (AUPRC, i.e. average precision) is the appropriate summary for imbalanced detection "
+      "because its no-skill baseline equals the prevalence (0.0405).", align="justify")
+    P(f"All three models far exceed this baseline: ResNet50 attains AUPRC = "
+      f'{prev.loc["ResNet50","AUPRC"]:.3f} ({prev.loc["ResNet50","AUPRC_over_baseline"]:.1f} times the '
+      f"no-skill value), DenseNet121 = "
+      f'{prev.loc["DenseNet121","AUPRC"]:.3f} ({prev.loc["DenseNet121","AUPRC_over_baseline"]:.1f}x), '
+      f'and EfficientNet-B4 = {prev.loc["EfficientNet-B4","AUPRC"]:.3f} '
+      f'({prev.loc["EfficientNet-B4","AUPRC_over_baseline"]:.1f}x) (Table 1; Figure 8 precision-recall '
+      f"curves). The high F1-optimal thresholds observed for all models (~0.99) are a direct "
+      f"consequence of the strong positive-class weighting during training (pos_weight = 21.06), which "
+      f"shifts the predicted-probability distribution upward; the ranking quality captured by AUC-ROC "
+      f"and AUPRC is unaffected by this shift.", align="justify")
+    P("That the low F1 is distributional rather than model-driven is shown directly in Figure 9: "
+      "holding ResNet50 and its threshold fixed and artificially raising prevalence by subsampling "
+      "negatives (for illustration only - the main results always use the real 4.05% set), F1 rises "
+      "monotonically from 0.384 at 4% to 0.544 at 50% prevalence, while AUC-ROC stays essentially "
+      "flat (0.897 to 0.895). Recall is unchanged across these subsets, so the F1 gain comes entirely "
+      "from precision improving as the base rate rises.", align="justify")
+    if clin is not None:
+        rn = clin[(clin["Model"] == "ResNet50") & (clin["target_recall"] == 0.90)]
+        if len(rn):
+            rr = rn.iloc[0]
+            P(f"Framed for screening, where high sensitivity matters more than F1, ResNet50 reaches "
+              f'{rr["achieved_recall"]*100:.0f}% recall at {rr["Specificity"]*100:.1f}% specificity '
+              f'(about {rr["FP_per_1000_scans"]:.0f} false positives per 1,000 scans), a clinically '
+              f"actionable operating point that raw F1@0.5 fails to convey.", align="justify")
+
 if focal is not None:
-    H("3.8 Loss-function ablation: calibration and the F1 ceiling", 2)
+    H("3.9 Loss-function ablation: calibration and the F1 ceiling", 2)
     P("The low F1 at threshold 0.5 in Table 1 reflects the dual imbalance correction used during "
-      "training (weighted BCE with pos_weight = 21 together with a minority oversampler), which "
+      "training (weighted BCE with pos_weight = 21.06 together with a minority oversampler), which "
       "deliberately pushes the decision boundary toward the positive class to maximize sensitivity. "
       "To separate this calibration effect from the models' intrinsic discriminative ability, we "
       "retrained all three backbones with a focal loss (alpha = 0.6, gamma = 2) and a single, milder "
@@ -286,6 +330,11 @@ for fn, cap in [
     ("sensitivity_analysis.png", "Figure 5. CTI under three weight configurations (ranks annotated)."),
     ("pathology_correlation.png", "Figure 6. Pathology bounding-box area vs. CTI per method."),
     ("roc_curves.png", "Figure 7. ROC and precision-recall curves for the three models."),
+    ("pr_curves.png", "Figure 8. Precision-recall curves on the real 4.05% prevalence test set, with "
+     "the no-skill baseline (dashed) at the prevalence and per-model AUPRC annotated."),
+    ("f1_prevalence_effect.png", "Figure 9. F1 is prevalence-dependent while AUC-ROC is "
+     "prevalence-invariant: for ResNet50 at a fixed threshold, F1 rises with prevalence (negative "
+     "subsampling, illustration only) whereas AUC-ROC stays flat."),
 ]:
     figure(fn, cap)
 
@@ -310,12 +359,17 @@ P("The cross-architecture agreement component, to our knowledge not previously r
   "correlation between CTI and cardiomegaly size also has practical implications - explanations for "
   "smaller or earlier enlargement may be less reliable - and suggests caution when interpreting "
   "saliency for subtle findings.", align="justify")
-P("On the classification side, the gap between threshold-0.5 and tuned operating points highlights "
-  "that, under strong class imbalance, AUC-ROC and balanced accuracy are the appropriate headline "
-  "metrics; raw accuracy is misleading because a trivial majority-class predictor would exceed 95%. "
-  "All three models were sound rankers whose operating point is readily tuned for a target "
-  "sensitivity-specificity trade-off.", align="justify")
-P("The loss-function ablation (Section 3.8) reinforces this point. Replacing the dual imbalance "
+P("On the classification side, the headline metrics must respect the test set's 4.05% prevalence "
+  "(Section 3.8). Because precision - and therefore F1 at a fixed 0.5 threshold - is bounded by the "
+  "base rate, F1@0.5 understates models that are in fact strong rankers: all three exceed the "
+  "no-skill AUPRC by 4.6-7.5x and retain AUC-ROC of 0.83-0.90. We make the prevalence dependence "
+  "explicit (Figures 8-9): F1 climbs with prevalence at a fixed threshold while AUC-ROC is invariant, "
+  "confirming the low headline F1 is a property of the class distribution and operating point, not of "
+  "the model or the patient-independent split. Reported at a tuned or high-sensitivity operating "
+  "point (e.g. 90% recall at 72.8% specificity for ResNet50), the same models deliver clinically "
+  "useful screening behaviour; raw accuracy is meaningless here, as a trivial majority predictor "
+  "would exceed 95%.", align="justify")
+P("The loss-function ablation (Section 3.9) reinforces this point. Replacing the dual imbalance "
   "correction with focal loss roughly doubled F1 at the default threshold and restored a near-default "
   "optimal operating point, yet barely changed the best achievable F1 or the AUC-ROC. Low F1 is "
   "therefore attributable jointly to a deliberately sensitivity-oriented decision boundary - readily "
@@ -378,5 +432,5 @@ for i, r in enumerate(refs, 1):
 
 doc.save(OUT)
 print("Saved", OUT)
-print("Sections: Abstract, Introduction, Methods, Results (3 tables, incl. calibration ablation), "
-      "7 figures, Discussion, Limitations, Conclusion, References")
+print("Sections: Abstract, Introduction, Methods, Results (3 tables, incl. prevalence + calibration "
+      "analyses), 9 figures, Discussion, Limitations, Conclusion, References")
