@@ -2,7 +2,7 @@
 Streamlit app - XAI Reliability Assessment (CTI) for Cardiomegaly detection.
 
 Multi-tab UI:
-  - Analyze        : upload OR pick a demo image -> prediction gauge, GT-box
+  - Analyze        : upload OR pick any held-out test image -> prediction gauge, GT-box
                      overlay, saliency overlay, live localization metrics,
                      CTI radar + trustworthiness rating, downloadable heatmap.
   - Compare Methods: all 5 saliency maps for one image/model, side by side.
@@ -27,7 +27,7 @@ from scipy.spatial.distance import jensenshannon
 import xai_core
 
 ROOT = r"C:\Users\NMAMIT\cti_project"
-DATA_DIR, RESULTS, DEMO_DIR = (os.path.join(ROOT, d) for d in ("data", "results", "demo_images"))
+DATA_DIR, RESULTS = (os.path.join(ROOT, d) for d in ("data", "results"))
 IMAGE_DIR = os.path.join(ROOT, "images")  # full NIH set (gitignored); test images live here
 DEVICE = xai_core.DEVICE
 
@@ -176,19 +176,7 @@ def trust_badge(cti):
     else: st.error(f"❌ LOWER TRUSTWORTHINESS — CTI {cti:.3f}")
 
 
-def demo_files():
-    out = {}
-    for sub in ("cardiomegaly", "normal"):
-        d = os.path.join(DEMO_DIR, sub)
-        if os.path.isdir(d):
-            for f in sorted(os.listdir(d)):
-                if f.endswith(".png"): out[f"{sub}/{f}"] = os.path.join(d, f)
-    return out
-
-
-def get_image_bytes(src_mode, uploaded, demo_choice, demos, test_choice=None):
-    if src_mode == "Demo image" and demo_choice:
-        with open(demos[demo_choice], "rb") as fh: return fh.read(), os.path.basename(demos[demo_choice])
+def get_image_bytes(src_mode, uploaded, test_choice=None):
     if src_mode == "Test set" and test_choice:
         p = os.path.join(IMAGE_DIR, test_choice)
         if os.path.exists(p):
@@ -202,7 +190,6 @@ bymm, rank, ci, clf, per_img = load_results()
 bbox = load_bbox()
 op_df = load_operating_points()
 test_idx = load_test_index()
-demos = demo_files()
 if per_img is not None:
     per_idx = per_img.set_index(["image_id", "model", "method"])
 else:
@@ -221,10 +208,9 @@ with tab_analyze:
     with c_in:
         st.subheader("Input")
         has_testset = test_idx is not None and os.path.isdir(IMAGE_DIR)
-        sources = ["Demo image"] + (["Test set"] if has_testset else []) + ["Upload"]
+        sources = (["Test set"] if has_testset else []) + ["Upload"]
         src = st.radio("Image source", sources, horizontal=True)
         uploaded = st.file_uploader("Upload chest X-ray", type=["png", "jpg", "jpeg"]) if src == "Upload" else None
-        demo_choice = st.selectbox("Pick a demo image", list(demos), index=0) if (src == "Demo image" and demos) else None
         test_choice = None
         if src == "Test set" and has_testset:
             cls = st.selectbox("Class filter", ["All", "Normal", "Cardiomegaly"])
@@ -240,7 +226,7 @@ with tab_analyze:
         go = st.button("Analyze", type="primary", use_container_width=True)
 
     with c_out:
-        img_bytes, fname = get_image_bytes(src, uploaded, demo_choice, demos, test_choice)
+        img_bytes, fname = get_image_bytes(src, uploaded, test_choice)
         if not go:
             st.info("Choose an image, model, and XAI method, then click **Analyze**.")
         elif img_bytes is None:
@@ -311,10 +297,9 @@ with tab_analyze:
 with tab_compare:
     st.subheader("Compare all 5 XAI methods on one image")
     cc1, cc2 = st.columns([1, 1])
-    csources = ["Demo image"] + (["Test set"] if has_testset else []) + ["Upload"]
+    csources = (["Test set"] if has_testset else []) + ["Upload"]
     csrc = cc1.radio("Image source", csources, horizontal=True, key="csrc")
     cup = cc1.file_uploader("Upload", type=["png", "jpg", "jpeg"], key="cup") if csrc == "Upload" else None
-    cdemo = cc1.selectbox("Demo image", list(demos), key="cdemo") if (csrc == "Demo image" and demos) else None
     ctest = None
     if csrc == "Test set" and has_testset:
         ccls = cc1.selectbox("Class filter", ["All", "Normal", "Cardiomegaly"], key="ccls")
@@ -325,7 +310,7 @@ with tab_compare:
     cmodel = cc2.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get, key="cmodel")
     cgo = cc2.button("Compare", type="primary")
     if cgo:
-        cb, cfn = get_image_bytes(csrc, cup, cdemo, demos, ctest)
+        cb, cfn = get_image_bytes(csrc, cup, ctest)
         if cb is None:
             st.warning("Select or upload an image first.")
         else:
