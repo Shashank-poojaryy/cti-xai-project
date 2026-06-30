@@ -36,6 +36,13 @@ METHOD_LABEL = {"gradcam": "Grad-CAM", "gradcampp": "Grad-CAM++", "scorecam": "S
 COMPONENTS = ["localization", "stability", "cross_xai", "cross_arch", "sanity"]
 COMP_LABEL = {"localization": "Localization", "stability": "Stability", "cross_xai": "Cross-XAI",
               "cross_arch": "Cross-Arch", "sanity": "Sanity"}
+# Decision-threshold presets (keys match operating_points.csv "operating_point" column).
+# The model is sensitivity-tuned (pos_weight + oversampling), so its raw scores sit high;
+# 0.5 over-calls Cardiomegaly. The F1-optimal point restores ~94-97% specificity on normals.
+OP_LABEL = {"F1_optimal": "Balanced (F1-optimal) — recommended",
+            "Youden_J": "Youden's J (balanced sens/spec)",
+            "high_sensitivity_recall>=0.90": "High sensitivity (recall ≥ 0.90)",
+            "default_0.5": "Naïve 0.5 (over-calls positive)"}
 _tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),
                           transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
 
@@ -67,6 +74,20 @@ def load_bbox():
     if not os.path.exists(p):
         return None
     return pd.read_csv(p).drop_duplicates("Image Index").set_index("Image Index")
+
+
+@st.cache_data(show_spinner=False)
+def load_operating_points():
+    p = os.path.join(RESULTS, "operating_points.csv")
+    return pd.read_csv(p) if os.path.exists(p) else None
+
+
+def get_threshold(op_df, model_name, op_key):
+    """Per-model decision threshold from operating_points.csv (falls back to 0.5)."""
+    if op_df is None:
+        return 0.5
+    r = op_df[(op_df["Model"] == MODEL_LABEL[model_name]) & (op_df["operating_point"] == op_key)]
+    return float(r.iloc[0]["threshold"]) if not r.empty else 0.5
 
 
 @st.cache_data(show_spinner=False)
@@ -114,15 +135,15 @@ def localization(sal, row, n=224, orig=1024):
     return iou, js, pg
 
 
-def prob_gauge(prob):
+def prob_gauge(prob, thr=0.5):
     fig, ax = plt.subplots(figsize=(5, 0.9))
     ax.barh([0], [1], color="#e8e8e8", height=0.5)
-    ax.barh([0], [prob], color=("#c0392b" if prob >= 0.5 else "#27ae60"), height=0.5)
-    ax.axvline(0.5, color="#333", ls="--", lw=1)
+    ax.barh([0], [prob], color=("#c0392b" if prob >= thr else "#27ae60"), height=0.5)
+    ax.axvline(thr, color="#333", ls="--", lw=1)
     ax.text(prob, 0, f" {prob*100:.1f}%", va="center",
             ha="left" if prob < 0.85 else "right", fontsize=11, fontweight="bold")
     ax.set_xlim(0, 1); ax.set_ylim(-0.5, 0.5); ax.axis("off")
-    ax.text(0.5, -0.55, "threshold 0.5", ha="center", fontsize=7, color="#666")
+    ax.text(thr, -0.55, f"threshold {thr:.3f}", ha="center", fontsize=7, color="#666")
     fig.tight_layout(); return fig
 
 
@@ -163,6 +184,7 @@ def get_image_bytes(src_mode, uploaded, demo_choice, demos):
 
 bymm, rank, ci, clf, per_img = load_results()
 bbox = load_bbox()
+op_df = load_operating_points()
 demos = demo_files()
 if per_img is not None:
     per_idx = per_img.set_index(["image_id", "model", "method"])
@@ -186,6 +208,9 @@ with tab_analyze:
         demo_choice = st.selectbox("Pick a demo image", list(demos), index=0) if (src == "Demo image" and demos) else None
         model_name = st.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get)
         method = st.selectbox("XAI method", list(METHOD_LABEL), format_func=METHOD_LABEL.get)
+        op_key = st.selectbox("Decision threshold", list(OP_LABEL), format_func=OP_LABEL.get,
+                              help="Imbalance-corrected models score high; 0.5 over-calls Cardiomegaly. "
+                                   "F1-optimal restores ~94-97% specificity on normal X-rays.")
         go = st.button("Analyze", type="primary", use_container_width=True)
 
     with c_out:
@@ -199,14 +224,16 @@ with tab_analyze:
             with st.spinner(f"{METHOD_LABEL[method]} on {MODEL_LABEL[model_name]}…"):
                 prob = predict(img_bytes, model_name)
                 sal = gen_maps(img_bytes, model_name, (method,))[method]
-            pred = "Cardiomegaly" if prob >= 0.5 else "Normal"
+            thr = get_threshold(op_df, model_name, op_key)
+            pred = "Cardiomegaly" if prob >= thr else "Normal"
             m1, m2, m3 = st.columns([1, 1, 1])
             m1.metric("Prediction", pred)
-            m2.metric("Confidence", f"{(prob if prob>=0.5 else 1-prob)*100:.1f}%")
+            m2.metric("Raw score", f"{prob*100:.1f}%", help=f"Decision threshold for this model: {thr:.3f}")
             m3.metric("Model", MODEL_LABEL[model_name])
-            st.pyplot(prob_gauge(prob))
-            if pred == "Cardiomegaly" and prob < 0.7:
-                st.caption("ℹ️ Sensitivity-tuned models lean positive near 0.5 — weigh the heatmap, not just the label.")
+            st.pyplot(prob_gauge(prob, thr))
+            st.caption(f"ℹ️ {MODEL_LABEL[model_name]} is sensitivity-tuned, so raw scores sit high. "
+                       f"Decision uses the **{OP_LABEL[op_key].split(' —')[0]}** threshold ({thr:.3f}); "
+                       f"a score below it reads **Normal**. Always weigh the heatmap, not just the label.")
 
             has_box = bbox is not None and fname in bbox.index
             i1, i2 = st.columns(2)

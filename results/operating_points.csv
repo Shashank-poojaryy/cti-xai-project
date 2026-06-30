@@ -1,0 +1,13 @@
+Model,operating_point,threshold,F1,Precision,Recall,Specificity
+DenseNet121,default_0.5,0.5,0.1904,0.106,0.933,0.6683
+DenseNet121,F1_optimal,0.99,0.356,0.2704,0.5211,0.9407
+DenseNet121,Youden_J,0.828,0.2373,0.1374,0.8678,0.7704
+DenseNet121,high_sensitivity_recall>=0.90,0.669,0.2071,0.117,0.9004,0.7136
+ResNet50,default_0.5,0.5,0.2353,0.1361,0.8678,0.7677
+ResNet50,F1_optimal,0.996,0.3842,0.3872,0.3812,0.9746
+ResNet50,Youden_J,0.678,0.2638,0.1568,0.8314,0.8115
+ResNet50,high_sensitivity_recall>=0.90,0.338,0.2158,0.1226,0.9004,0.7283
+EfficientNet-B4,default_0.5,0.5,0.0998,0.0526,0.9885,0.2489
+EfficientNet-B4,F1_optimal,0.985,0.2522,0.2043,0.3295,0.9459
+EfficientNet-B4,Youden_J,0.909,0.1748,0.0972,0.8678,0.6602
+EfficientNet-B4,high_sensitivity_recall>=0.90,0.882,0.1598,0.0877,0.9004,0.6051

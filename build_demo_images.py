@@ -18,7 +18,7 @@ DATA_DIR  = os.path.join(ROOT, "data")
 IMAGE_DIR = os.path.join(ROOT, "images")
 DEMO_DIR  = os.path.join(ROOT, "demo_images")
 RESULTS   = os.path.join(ROOT, "results")
-N_NORMAL  = 15
+N_NORMAL  = 40
 SEED      = 42
 
 test = pd.read_csv(os.path.join(DATA_DIR, "test.csv"))
@@ -78,10 +78,11 @@ HOW TO USE
 3. The heatmap should highlight the cardiac silhouette for Cardiomegaly cases.
 
 NOTE ON PREDICTIONS
-The models are tuned for high sensitivity (they rarely miss cardiomegaly), so at
-the default 0.5 threshold they OVER-predict positive: some Normal images may be
-labelled "Cardiomegaly" with low confidence. That is expected from the class-
-imbalance handling -- judge the heatmap quality, not just the label.
+The models are imbalance-corrected (pos_weight + oversampling), so their raw
+sigmoid scores sit high; a naive 0.5 cut-off OVER-predicts Cardiomegaly. The app
+now decides at each model's calibrated F1-optimal threshold (~0.99), which
+restores ~94-97% specificity on Normal X-rays. Pick the "Decision threshold"
+preset in the Analyze tab. Still judge the heatmap quality, not just the label.
 
 manifest.csv lists every demo image with its true label, patient id, and CTI.
 """
