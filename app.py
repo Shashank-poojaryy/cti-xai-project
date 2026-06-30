@@ -37,9 +37,14 @@ METHOD_LABEL = {"gradcam": "Grad-CAM", "gradcampp": "Grad-CAM++", "scorecam": "S
 COMPONENTS = ["localization", "stability", "cross_xai", "cross_arch", "sanity"]
 COMP_LABEL = {"localization": "Localization", "stability": "Stability", "cross_xai": "Cross-XAI",
               "cross_arch": "Cross-Arch", "sanity": "Sanity"}
-# The models are sensitivity-tuned (pos_weight + oversampling), so raw scores sit high;
-# a naive 0.5 over-calls Cardiomegaly. The app decides at each model's calibrated
-# F1-optimal threshold (~0.99, from operating_points.csv) -> ~94-97% specificity on normals.
+# The models are sensitivity-tuned (pos_weight + oversampling), so raw scores sit high.
+# No single threshold is ideal at 4% prevalence: F1-optimal (~0.99) keeps normals clean
+# but misses cardiomegaly; Youden's J balances sensitivity and specificity. Presets below
+# (keys match operating_points.csv "operating_point"); default = Youden's J.
+OP_LABEL = {"Youden_J": "Balanced — Youden's J (recommended)",
+            "high_sensitivity_recall>=0.90": "High sensitivity (recall ≥ 0.90)",
+            "F1_optimal": "Specificity-first (F1-optimal, ~0.99)",
+            "default_0.5": "Naïve 0.5 (over-calls positive)"}
 _tf = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor(),
                           transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
 
@@ -224,6 +229,10 @@ with tab_analyze:
             test_choice = st.selectbox("Pick a test image", ids, index=0) if ids else None
         model_name = st.selectbox("Model", list(MODEL_LABEL), format_func=MODEL_LABEL.get)
         method = st.selectbox("XAI method", list(METHOD_LABEL), format_func=METHOD_LABEL.get)
+        op_key = st.selectbox("Decision threshold", list(OP_LABEL), format_func=OP_LABEL.get,
+                              help="At ~4% prevalence no single cut-off is perfect. Youden's J balances "
+                                   "catching cardiomegaly vs. avoiding false alarms; F1-optimal (~0.99) "
+                                   "keeps normals clean but misses many positives.")
         go = st.button("Analyze", type="primary", use_container_width=True)
 
     with c_out:
@@ -237,7 +246,7 @@ with tab_analyze:
             with st.spinner(f"{METHOD_LABEL[method]} on {MODEL_LABEL[model_name]}…"):
                 prob = predict(img_bytes, model_name)
                 sal = gen_maps(img_bytes, model_name, (method,))[method]
-            thr = get_threshold(op_df, model_name, "F1_optimal")
+            thr = get_threshold(op_df, model_name, op_key)
             pred = "Cardiomegaly" if prob >= thr else "Normal"
             m1, m2, m3 = st.columns([1, 1, 1])
             m1.metric("Prediction", pred)
@@ -245,8 +254,9 @@ with tab_analyze:
             m3.metric("Model", MODEL_LABEL[model_name])
             st.pyplot(prob_gauge(prob, thr))
             st.caption(f"ℹ️ {MODEL_LABEL[model_name]} is sensitivity-tuned, so raw scores sit high. "
-                       f"Decision uses the calibrated **F1-optimal** threshold ({thr:.3f}); "
-                       f"a score below it reads **Normal**. Always weigh the heatmap, not just the label.")
+                       f"Decision uses the **{OP_LABEL[op_key].split(' —')[0].split(' (')[0]}** threshold "
+                       f"({thr:.3f}); a score below it reads **Normal**. CTI rates the heatmap's "
+                       f"trustworthiness, not the label — weigh both.")
             if test_idx is not None:
                 gt = test_idx[test_idx["Image Index"] == fname]
                 if not gt.empty:
